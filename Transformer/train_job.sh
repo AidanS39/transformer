@@ -10,7 +10,7 @@
 #SBATCH --partition=gpu			         # Partition (a.k.a. queue) to use
 #SBATCH --gres=gpu:1			         # Select GPU resource (# after : indicates how many)
 #SBATCH --constraint=l40s                # use rtxa5000, l40s or gtx1080ti here to limit GPU selection
-#SBATCH --time=48:00:00                  # Max run time (days-hh:mm:ss) ... adjust as necessary
+#SBATCH --time=5-00:00:00                # Max run time (days-hh:mm:ss) ... adjust as necessary
 
 
 # Run your training script

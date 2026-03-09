@@ -44,25 +44,24 @@ class PositionalEncoding(nn.Module):
 
 class SelfAttention(nn.Module):
     def __init__(self, 
-                 d_model: int, 
-                 d_query: int = 128, 
+                 d_model: int,
                  n_heads: int = 8,
                  device: torch.device = torch.device("cpu")):
         super().__init__()
         self.device = device
         self.n_heads = n_heads
 
-        d_query = int(d_model / n_heads)
+        self.d_query = int(d_model / n_heads)
 
         self.norm = nn.LayerNorm(d_model)
 
-        self.W_q = nn.Linear(d_model, d_query)
-        self.W_k = nn.Linear(d_model, d_query)
-        self.W_v = nn.Linear(d_model, d_query)
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
 
         self.W_o = nn.Linear(d_model, d_model)
 
-        self.scaling_factor = math.sqrt(d_query)
+        self.scaling_factor = math.sqrt(self.d_query)
 
         self.softmax = nn.Softmax(dim=-1)
 
@@ -71,13 +70,19 @@ class SelfAttention(nn.Module):
         # normalize
         x_norm = self.norm(x)
 
-        # duplicate tensor on heads dimension
-        x_heads = x_norm.unsqueeze(1).repeat([1, self.n_heads, 1, 1]) # shape [batch_size, n_heads, seq_len, d_model]
-
         # calculate queries, keys, values
-        q = self.W_q(x_heads) # shape [batch_size, n_heads, seq_len, d_query]
-        k = self.W_k(x_heads) # shape [batch_size, n_heads, seq_len, d_query]
-        v = self.W_v(x_heads) # shape [batch_size, n_heads, seq_len, d_query]
+        q = self.W_q(x_norm) # shape [batch_size, seq_len, d_model]
+        k = self.W_k(x_norm) # shape [batch_size, seq_len, d_model]
+        v = self.W_v(x_norm) # shape [batch_size, seq_len, d_model]
+
+        # reshape for heads
+        q = q.reshape(q.shape[0], q.shape[1], self.n_heads, self.d_query) # shape [batch_size, seq_len, n_heads, d_model]
+        k = k.reshape(k.shape[0], k.shape[1], self.n_heads, self.d_query) # shape [batch_size, seq_len, n_heads, d_model]
+        v = v.reshape(v.shape[0], v.shape[1], self.n_heads, self.d_query) # shape [batch_size, seq_len, n_heads, d_model]
+
+        q = torch.transpose(q, -3, -2) # shape [batch_size, n_heads, seq_len, d_model]
+        k = torch.transpose(k, -3, -2) # shape [batch_size, n_heads, seq_len, d_model]
+        v = torch.transpose(v, -3, -2) # shape [batch_size, n_heads, seq_len, d_model]
 
         # form attention pattern
         attention_pattern = torch.matmul(q, torch.transpose(k, -2, -1)) / self.scaling_factor # shape [batch_size, n_heads, seq_len, seq_len]
@@ -133,8 +138,7 @@ class MultilayerPerceptron(nn.Module):
 class TransformerConfig():
     def __init__(self, 
                  n_vocab: int, 
-                 d_model: int = 128, 
-                 d_query: int = 128, 
+                 d_model: int = 128,
                  n_heads: int = 8, 
                  n_layers: int = 4, 
                  d_up: int = 256,
@@ -142,7 +146,6 @@ class TransformerConfig():
         ):
         self.n_vocab  = n_vocab
         self.d_model  = d_model
-        self.d_query  = d_query
         self.n_heads  = n_heads
         self.n_layers = n_layers
         self.d_up     = d_up
@@ -159,7 +162,7 @@ class Transformer(nn.Module):
         self.pe = PositionalEncoding(config.d_model, max_len=50000)
 
         self.attention_layers = nn.ModuleList([layer for _ in range(config.n_layers) for layer in 
-                                               (SelfAttention(config.d_model, config.d_query, config.n_heads, config.device),
+                                               (SelfAttention(config.d_model, config.n_heads, config.device),
                                                 MultilayerPerceptron(config.d_model, config.d_up))])
 
         self.unembedding = nn.Linear(config.d_model, config.n_vocab)
@@ -243,7 +246,7 @@ class CheckpointRandomSampler(torch.utils.data.RandomSampler):
             yield idx
         return
     def __len__(self):
-        return super().__len__() - self.start_idx
+        return super().__len__() - self.start_batch_idx
 
 
 
@@ -282,7 +285,7 @@ def validate_model(model,
             outputs = model(inputs)[:,:-1,:]
 
             targets = targets.reshape(-1)
-            outputs = outputs.reshape(-1, outputs.shape[-1])
+            outputs = outputs.reshape(-1, outputs.shape[-1]).float()
             
             loss = criterion(outputs, targets)
 
@@ -324,10 +327,10 @@ def train_model(model: nn.Module,
 
     batch_idx = start_batch
 
-    epochs = list()
-    batch_num = 1
-    batches = list()
-    losses = list()
+    # epochs = list()
+    # batch_num = 1
+    # batches = list()
+    # losses = list()
 
     for epoch in range(start_epoch, n_epochs):
         start_time = time.time()
@@ -337,7 +340,7 @@ def train_model(model: nn.Module,
             outputs = compiled_model(inputs)[:,:-1,:] # shape [batch_size, seq_len - 1, n_vocab]
 
             targets = targets.reshape(-1) # shape [batch_size * (seq_len - 1)]
-            outputs = outputs.reshape(-1, outputs.shape[-1]) # shape [batch_size * (seq_len - 1), n_vocab]
+            outputs = outputs.reshape(-1, outputs.shape[-1]).float() # shape [batch_size * (seq_len - 1), n_vocab]
             
             loss = criterion(outputs, targets) / accum_steps
             loss.backward()
@@ -348,10 +351,11 @@ def train_model(model: nn.Module,
 
             if (batch_idx + 1) % (accum_steps * 4) == 0:
                 print(f"Epoch [{epoch + 1}].[{batch_idx + 1}] Loss: {loss * accum_steps}")
-                epochs.append(epoch)
-                batches.append(batch_num)
-                losses.append(loss * accum_steps)
-                batch_num += 1
+
+                # epochs.append(epoch)
+                # batches.append(batch_num)
+                # losses.append(loss * accum_steps)
+                # batch_num += 1
 
             if (batch_idx + 1) % (accum_steps * 64) == 0:
                 print_avg_batch_time(start_time, accum_steps * 64)
@@ -367,11 +371,12 @@ def train_model(model: nn.Module,
 
         batch_idx = 0
         save_checkpoint(model, optimizer, epoch, batch_idx, checkpoint, checkpoint_path)
+        torch.cuda.empty_cache()
     epoch = 0
     save_checkpoint(model, optimizer, epoch, batch_idx, checkpoint, checkpoint_path)
 
-    data = pd.DataFrame({"epoch": epochs, "batch": batch_num, "loss": losses})
-    data.to_csv()
+    # data = pd.DataFrame({"epoch": epochs, "batch": batch_num, "loss": losses})
+    # data.to_csv()
 
 
 
@@ -399,7 +404,7 @@ def generate_response(model, encoder: tiktoken.Encoding, device: torch.device, p
             if num_chars >= 1000:
                 end_sequence = True
                 
-            if output_token == model.n_vocab - 1:
+            if output_token == model.n_vocab - 2:
                 end_sequence = True
             else:
                 sequence = sequence + [output_token]

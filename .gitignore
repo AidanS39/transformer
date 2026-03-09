@@ -212,3 +212,8 @@ train_data.bin
 *.pt
 
 *.out
+
+train_job.sh
+
+.init_env.sh
+get_gpu.sh

@@ -8,7 +8,7 @@ from model import generate_response
 def main():
     # torch.manual_seed(42)
     torch.set_float32_matmul_precision('high')
-    checkpoint = TransformerCheckpoint.load("checkpoint.pt")
+    checkpoint = TransformerCheckpoint.load("model_1024_8_8_2048.pt")
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     print(device)
@@ -21,11 +21,11 @@ def main():
     model.load_state_dict(model_state)
     model = torch.compile(model)
 
-    prompt = "One day, there was a bear looking for honey."
+    prompt = "Once upon a time, there was a bear in the forest."
 
     print("generating sequence...")
     start_time = time.time()
-    response = generate_response(model, encoder=encoder, device=device, prompt=prompt, temp=1.5, k=2)
+    response = generate_response(model, encoder=encoder, device=device, prompt=prompt, temp=1.5, k=3)
     print(f"\ngenerated sequence in {time.time() - start_time} seconds")
 
 if __name__ == "__main__":

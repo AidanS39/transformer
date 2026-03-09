@@ -16,6 +16,7 @@ from model import CheckpointRandomSampler
 from model import train_model
 
 def main():
+    os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
     torch.manual_seed(42)
     torch.set_float32_matmul_precision('high')
     inductor_config.split_reductions = False
@@ -46,28 +47,29 @@ def main():
     # hyperparameters
 
     model_config = TransformerConfig(
-        n_vocab=encoder.n_vocab + 1, # NOTE: add 1 for <EOS> token
+        n_vocab=encoder.n_vocab + 2, # NOTE: add 2, 1 for <EOS> token and 1 for padding token
         d_model=1024,
-        d_query=64,
         n_heads=16,
-        n_layers=16,
+        n_layers=8,
         d_up=512,
         device=device
     )
 
-    n_epochs    = 10
+    n_epochs    = 5
     batch_size  = 8
     accum_steps = 4
 
+    padding_value = model_config.n_vocab - 1 # ignore padding value during loss
+
     def collate_fn_padding(batch):
-        batch = pad_sequence(batch, batch_first=True)
+        batch = pad_sequence(batch, batch_first=True, padding_value=padding_value)
         return batch
 
-    checkpoint_path = "checkpoint.pt"
+    checkpoint_path = f"model_{model_config.d_model}_{model_config.n_heads}_{model_config.n_layers}_{model_config.d_up}.pt"
 
-    model = Transformer(model_config).to(device)
+    model = Transformer(model_config).to(device=device, dtype=torch.bfloat16)
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(ignore_index=padding_value)
     optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
     checkpoint = None
