@@ -13,8 +13,8 @@ import time
 import math
 import os
 
-from util import EpochLog
-from util import TrainLog
+from utils import EpochLog
+from utils import TrainLog
 
 # taken from https://pytorch-tutorials-preview.netlify.app/beginner/transformer_tutorial.html
 class PositionalEncoding(nn.Module):
@@ -314,6 +314,7 @@ def train_model(model: nn.Module,
                 checkpoint: TransformerCheckpoint,
                 checkpoint_path: str = "checkpoint.pt"):
     
+    # initialize parameters from checkpoint
     start_epoch = 0
     start_batch = 0
 
@@ -327,26 +328,32 @@ def train_model(model: nn.Module,
         torch.set_rng_state(checkpoint.rng_state)
     else:
         raise Exception("Error: checkpoint passed as None")
-        
-    compiled_model = torch.compile(model, options={"split_reductions": False})
-
-    print(f"Starting training on epoch {start_epoch}, batch {start_batch}")
     
+    batch_idx = start_batch
+    
+    # compile model and start training
+    compiled_model = torch.compile(model)
+
     checkpoint.train_log.start_timer()
 
     compiled_model.train()
 
-    batch_idx = start_batch
-
+    print(f"Starting training on epoch {start_epoch}, batch {start_batch}")
     for epoch in range(start_epoch, n_epochs):
+
+        # initialize log for current epoch, add to train log
         epoch_log = EpochLog(epoch)
+        checkpoint.train_log.add_epoch_log(epoch_log)
+
+        # start training on each batch
         start_time = time.time()
         for idx, inputs in enumerate(train_loader):
             inputs = inputs.to(device)
             targets = inputs[:,1:] # shape [batch_size, seq_len - 1]
             targets = targets.reshape(-1) # shape [batch_size * (seq_len - 1)]
             
-            with torch.autocast(device_type=device.type, dtype=torch.float32):
+            # autocast for automatic mixed precision
+            with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
                 outputs = compiled_model(inputs)[:,:-1,:] # shape [batch_size, seq_len - 1, n_vocab]
                 outputs = outputs.reshape(-1, outputs.shape[-1]) # shape [batch_size * (seq_len - 1), n_vocab]
                 
@@ -356,14 +363,18 @@ def train_model(model: nn.Module,
 
             batch_idx += 1
 
+            # every accum_steps # of batches, step and zero out gradients (gradient accumulation)
             if (batch_idx) % accum_steps == 0:
                 optimizer.step()
                 optimizer.zero_grad()
 
+            # tasks to do every 4 * accum_steps # of batches
             if (batch_idx) % (accum_steps * 4) == 0:
                 epoch_log.add_batch_log(batch_idx - 1, loss.item() * accum_steps)
+                
                 print(f"Epoch [{epoch}].[{batch_idx - 1}] Loss: {loss * accum_steps}")
 
+            # tasks to do every 64 * accum_steps # of batches
             if (batch_idx) % (accum_steps * 64) == 0:
                 print_avg_batch_time(start_time, accum_steps * 64)
                 start_time = time.time()
@@ -374,11 +385,13 @@ def train_model(model: nn.Module,
 
                 save_checkpoint(model, optimizer, epoch, batch_idx, checkpoint, checkpoint_path)
 
+        # save checkpoint and empty cache after every epoch
         batch_idx = 0
-        checkpoint.train_log.add_epoch_log(epoch_log)
         save_checkpoint(model, optimizer, epoch, batch_idx, checkpoint, checkpoint_path)
         torch.cuda.empty_cache()
-    epoch = n_epochs - 1
+
+    # stop training log timer and save checkpoint after training is complete
+    epoch = n_epochs
     checkpoint.train_log.stop_timer()
     save_checkpoint(model, optimizer, epoch, batch_idx, checkpoint, checkpoint_path)
 
