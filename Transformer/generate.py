@@ -12,7 +12,8 @@ def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     print(device, flush=True)
     
-    checkpoint = TransformerCheckpoint.load("./models/model_2048_8_8_2048.pt")
+    # TODO: allow user to pick any model from models folder
+    checkpoint = TransformerCheckpoint.load("./models/model_1024_16_12_2048.pt")
 
     encoder = checkpoint.encoder
     config = checkpoint.config
@@ -22,7 +23,7 @@ def main():
     model.load_state_dict(model_state)
     model = torch.compile(model)
 
-    prompt = "Once upon a time, there was a bear in the forest."
+    prompt = input("Write the beginning of a story: ")
 
     print("generating sequence...")
     start_time = time.time()
