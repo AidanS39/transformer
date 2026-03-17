@@ -59,11 +59,11 @@ def main():
     slow_print("\nWelcome to the TRANSFORMER Program!\n", delay=args.delay)
 
     slow_print("""
-Please excuse the delay in the first response. The model fully loads in during the first response, 
-and should respond very quickly to subsequent prompts.
+Note: The first response will be slower than subsequent ones, as the model fully loads 
+      during the initial forward pass. Later responses will be significantly faster.
 
 To generate a response: type out a prompt, then press ENTER.
-To exit the program: press ENTER without submitting a prompt, or type `exit` then press ENTER.
+To exit the program: To exit, press `ENTER` with an empty prompt or type `exit`.
 """, delay=args.delay)
 
     encoder = checkpoint.encoder

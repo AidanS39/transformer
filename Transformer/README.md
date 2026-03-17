@@ -84,22 +84,24 @@ python3 train.py -m 512 -h 4 -l 4 -u 1024 -e 3
  
 Checkpoints are saved to `./models/` automatically during training (see [Checkpointing](#checkpointing)).
  
----
- 
 ### Generation
- 
-Run `generate.py` to load a saved checkpoint and generate a story continuation from a prompt:
- 
+
+Run `generate.py` to launch an interactive story generation session:
 ```bash
 python3 generate.py
 ```
- 
-By default, it loads `./models/model_2048_8_8_2048.pt` and generates from the prompt:
- 
-> *"Once upon a time, there was a bear in the forest."*
- 
-To use a different checkpoint or prompt, edit the relevant variables in `generate.py` directly.
- 
+
+On startup, the program scans the `./models/` directory and presents a numbered list of available checkpoints to choose from. After selecting a model, it loads the checkpoint and enters a prompt loop — type the beginning of a story and press `ENTER` to generate a continuation. To exit, press `ENTER` with an empty prompt or type `exit`.
+
+**CLI flags:**
+
+| Flag | Argument | Default | Description |
+|---|---|---|---|
+| `-f` | `--models_path` | `./models` | Path to the folder containing model checkpoints |
+| | `--no-delay` | off | Disable the typewriter-style print delay |
+
+> Note: The first response will be slower than subsequent ones, as the model fully loads during the initial forward pass. Later responses will be significantly faster.
+
 Generation uses **top-k sampling** (`k=3`) with **temperature scaling** (`temp=1.5`) and stops after 1,000 tokens or upon encountering an end-of-sequence token.
  
 ### SLURM Job Submission
