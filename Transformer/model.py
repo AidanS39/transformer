@@ -398,11 +398,19 @@ def train_model(model: nn.Module,
 
 
 def generate_response(model, encoder: tiktoken.Encoding, device: torch.device, prompt: str, temp: float = 1, k: int = 5):
-    sequence = encoder.encode(prompt)
 
+    sequence = encoder.encode(prompt)
+    
+    if (len(sequence) <= 0) or (prompt == "exit"):
+        return None
+    
+    # print initial sequence
+    print()
     for token in sequence:
         print(encoder.decode([token]), end="", flush=True)
         time.sleep(0.05)
+    
+    # start next token prediction loop
     with torch.no_grad():
         num_chars = 0
         end_sequence = False

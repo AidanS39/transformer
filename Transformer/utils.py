@@ -51,3 +51,13 @@ def get_device() -> torch.device:
     else:
         warnings.warn("CUDA device not available, will use CPU instead.", UserWarning)
         return torch.device("cpu")
+    
+def slow_print(sequence: str, char_delay: float = 0.04, word_delay: float = 0.2):
+    sequence = sequence.split(sep=" ")
+    for i, word in enumerate(sequence):
+        for letter in word:
+            print(f"{letter}", end="", flush=True)
+            time.sleep(char_delay)
+        if i < len(sequence) - 1:
+            print(" ", end="", flush=True)
+        time.sleep(word_delay)
